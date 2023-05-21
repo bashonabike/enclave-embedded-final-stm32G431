@@ -53,11 +53,6 @@ typedef enum {
 	KNOB1Chn = ADC_CHANNEL_1, KNOB2Chn = ADC_CHANNEL_2, KNOB3Chn = ADC_CHANNEL_4, KNOB4Chn = ADC_CHANNEL_17,
 	KNOB5Chn = ADC_CHANNEL_13, KNOB6Chn = ADC_CHANNEL_3, KNOB7Chn = ADC_CHANNEL_4, KNOB8Chn = ADC_CHANNEL_3
 } KnobChannel;
-typedef enum {
-	//NOTE: repeat since latter half knobs are on adc2
-	KNOB1ADC = &hadc1, KNOB2ADC = &hadc1, KNOB3ADC = &hadc1, KNOB4ADC = &hadc2,
-	KNOB5ADC = &hadc2, KNOB6ADC = &hadc2, KNOB7ADC = &hadc2, KNOB8ADC = &hadc1
-} KnobADC;
 
 struct FloodlightLED {
 	uint32_t LEDColourChannelPin;
@@ -70,7 +65,7 @@ struct FloodlightLED {
 };
 
 struct Knob {
-	KnobADC adc;
+	ADC_HandleTypeDef * adc;
 	KnobChannel channel;
 	uint16_t value;
 };
@@ -81,6 +76,8 @@ struct FloodlightLED floodlights[NUMLIGHTS][COLOURCHANNELSPERLIGHT];
 
 #define NUMKNOBS 8
 struct Knob knobs[NUMKNOBS];
+
+_Bool initialized = 0;
 
 unsigned long width = 0;
 unsigned long avgWidth = 0;
@@ -114,8 +111,8 @@ static void MX_ADC2_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
-//Set to (498+1)*(3+1) so same rate as timer2
-#define timer2cycle() (*DWT_CYCCNT/1996)
+//Set to (666+1)*(7+1) so same rate as timer2
+#define timer2cycle() (*DWT_CYCCNT/5336)
 #define starttilnow() (timer2cycle() - start)
 
 #define ADC_WIDTH 4092
@@ -139,22 +136,22 @@ _Bool initializeFloodlightStructs() {
 			//NOTE: assuming no more than 10 LED per floodlight
 			switch (10*floodlightNum + LEDNum) {
 			case 0:
-				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Floodlight1Grn_Pin;
+				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld1R_Pin;
 				break;
 			case 1:
-				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Floodlight1Blu_Pin;
+				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld1G_Pin;
 				break;
 			case 2:
-				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Floodlight1Red_Pin;
+				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld1B_Pin;
 				break;
 			case 10:
-				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Floodlight2Grn_Pin;
+				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld2R_Pin;
 				break;
 			case 11:
-				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Floodlight2Blu_Pin;
+				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld2G_Pin;
 				break;
 			case 12:
-				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Floodlight2Red_Pin;
+				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld2B_Pin;
 				break;
 			default:
 				//Configure shit!
@@ -178,35 +175,35 @@ _Bool initializeKnobStructs() {
 		switch(knob) {
 		case 0:
 			knobs[knob].channel = KNOB1Chn;
-			knobs[knob].adc =KNOB1ADC;
+			knobs[knob].adc =&hadc1;
 			break;
 		case 1:
 			knobs[knob].channel = KNOB2Chn;
-			knobs[knob].adc = KNOB2ADC;
+			knobs[knob].adc = &hadc1;
 			break;
 		case 2:
 			knobs[knob].channel = KNOB3Chn;
-			knobs[knob].adc = KNOB3ADC;
+			knobs[knob].adc = &hadc1;
 			break;
 		case 3:
 			knobs[knob].channel = KNOB4Chn;
-			knobs[knob].adc = KNOB4ADC;
+			knobs[knob].adc = &hadc2;
 			break;
 		case 4:
 			knobs[knob].channel = KNOB5Chn;
-			knobs[knob].adc = KNOB5ADC;
+			knobs[knob].adc = &hadc2;
 			break;
 		case 5:
 			knobs[knob].channel = KNOB6Chn;
-			knobs[knob].adc = KNOB6ADC;
+			knobs[knob].adc = &hadc2;
 			break;
 		case 6:
 			knobs[knob].channel = KNOB7Chn;
-			knobs[knob].adc = KNOB7ADC;
+			knobs[knob].adc = &hadc2;
 			break;
 		case 7:
 			knobs[knob].channel = KNOB8Chn;
-			knobs[knob].adc = KNOB8ADC;
+			knobs[knob].adc = &hadc1;
 			break;
 		default:
 			//Configure shit!
@@ -226,7 +223,7 @@ uint16_t readADCChannel(KnobChannel channel, ADC_HandleTypeDef * adc) {
 	sConfig.Channel = channel;
 	sConfig.Rank = ADC_REGULAR_RANK_1;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
-	sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
 	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
@@ -375,19 +372,23 @@ void pulseFloodlight() {
 #pragma GCC pop_options
 // EXTI Mains External Interrupt ISR Handler
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+	if(initialized) {
 	if (GPIO_Pin == Mains_Pin) {
 		mainsDetect();
 	} else if (GPIO_Pin == But1_Pin || GPIO_Pin == But2_Pin || GPIO_Pin == But3_Pin ||
 			GPIO_Pin == But4_Pin || GPIO_Pin == But5_Pin || GPIO_Pin == But6_Pin) {
 		buttonPress(GPIO_Pin);
 	}
+	}
 }
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	if(initialized) {
 	if (htim->Instance == TIM2) {
 		pulseFloodlight();
 	}
 	else if (htim->Instance == TIM3) {
 		pollKnobs();
+	}
 	}
 }
 
@@ -434,6 +435,7 @@ int main(void)
 	HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
 	HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
 	HAL_TIM_Base_Start_IT(&htim2);
+	HAL_TIM_Base_Start_IT(&htim3);
 
 	*DEMCR = *DEMCR | 0x01000000;     // enable trace
 	*LAR = 0xC5ACCE55;    // <-- added unlock access to DWT (ITM, etc.)registers
@@ -447,14 +449,16 @@ int main(void)
 	//If fails config, exit program
 	if (initializeKnobStructs())
 		return 0;
-/* USER CODE END 2 */
 
-/* Infinite loop */
-/* USER CODE BEGIN WHILE */
+	initialized = 1;
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
 	while (1) {
-  /* USER CODE END WHILE */
+    /* USER CODE END WHILE */
 
-  /* USER CODE BEGIN 3 */
+    /* USER CODE BEGIN 3 */
 
 		//  mainsDetect();
 //	  pulseFloodlight();
@@ -530,7 +534,7 @@ static void MX_ADC1_Init(void)
   /** Common config
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.GainCompensation = 0;
@@ -597,7 +601,7 @@ static void MX_ADC2_Init(void)
   /** Common config
   */
   hadc2.Instance = ADC2;
-  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV4;
   hadc2.Init.Resolution = ADC_RESOLUTION_12B;
   hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc2.Init.GainCompensation = 0;
@@ -654,11 +658,11 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = 666;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4.294967295E9;
+  htim2.Init.Period = 7;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
@@ -699,11 +703,11 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = 4199;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
+  htim3.Init.Period = 9999;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
