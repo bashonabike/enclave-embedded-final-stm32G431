@@ -46,6 +46,7 @@ ADC_HandleTypeDef hadc2;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
 typedef enum {
@@ -55,6 +56,7 @@ typedef enum {
 } KnobChannel;
 
 struct FloodlightLED {
+	GPIO_TypeDef * GPIO;
 	uint32_t LEDColourChannelPin;
 	_Bool pinOn;
 	unsigned short dim;
@@ -70,12 +72,28 @@ struct Knob {
 	uint16_t value;
 };
 
+struct Button {
+	GPIO_TypeDef * GPIO;
+	uint32_t pin;
+	GPIO_PinState pinState;
+	_Bool buttonState;
+	uint8_t debounceCounter;
+};
+
+//2^32 - 100000
+#define DWT_CYCLE_RESET 4294867296
+
 #define NUMLIGHTS 2
 #define COLOURCHANNELSPERLIGHT 3
 struct FloodlightLED floodlights[NUMLIGHTS][COLOURCHANNELSPERLIGHT];
 
 #define NUMKNOBS 8
+//Div by 5 since 5ms polling
+#define DEBOUNCECYCLES 20
 struct Knob knobs[NUMKNOBS];
+
+#define NUMBUTTONS 6
+struct Button buttons[NUMBUTTONS];
 
 _Bool initialized = 0;
 
@@ -86,7 +104,7 @@ unsigned long start = 0;
 unsigned short place = 0;
 
 unsigned short curMains = 0;
-unsigned char incrDuty = 0;
+uint8_t incrDuty = 0;
 int curShift = 0;
 uint32_t curStartTilNow = 0;
 
@@ -109,6 +127,7 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_ADC2_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM4_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 //Set to (666+1)*(7+1) so same rate as timer2
@@ -122,11 +141,14 @@ static void MX_TIM3_Init(void);
 #define NUM_LED_LEVELS 256 //255+1
 
 #define LED_ON_STATE(floodlightNum, LEDNum) if(!floodlights[floodlightNum][LEDNum].pinOn) {\
-		HAL_GPIO_WritePin(GPIOB, floodlights[floodlightNum][LEDNum].LEDColourChannelPin, GPIO_PIN_SET);\
+		HAL_GPIO_WritePin(floodlights[floodlightNum][LEDNum].GPIO, \
+				floodlights[floodlightNum][LEDNum].LEDColourChannelPin, GPIO_PIN_SET);\
 		floodlights[floodlightNum][LEDNum].pinOn = 1;}
 #define LED_OFF_STATE(floodlightNum, LEDNum) if(floodlights[floodlightNum][LEDNum].pinOn) {\
-		HAL_GPIO_WritePin(GPIOB, floodlights[floodlightNum][LEDNum].LEDColourChannelPin, GPIO_PIN_RESET);\
+		HAL_GPIO_WritePin(floodlights[floodlightNum][LEDNum].GPIO, \
+				floodlights[floodlightNum][LEDNum].LEDColourChannelPin, GPIO_PIN_RESET);\
 		floodlights[floodlightNum][LEDNum].pinOn = 0;}
+
 
 _Bool initializeFloodlightStructs() {
 	short floodlightNum, LEDNum;
@@ -136,21 +158,27 @@ _Bool initializeFloodlightStructs() {
 			//NOTE: assuming no more than 10 LED per floodlight
 			switch (10*floodlightNum + LEDNum) {
 			case 0:
+				floodlights[floodlightNum][LEDNum].GPIO = GPIOB;
 				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld1R_Pin;
 				break;
 			case 1:
+				floodlights[floodlightNum][LEDNum].GPIO = GPIOF;
 				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld1G_Pin;
 				break;
 			case 2:
+				floodlights[floodlightNum][LEDNum].GPIO = GPIOF;
 				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld1B_Pin;
 				break;
 			case 10:
+				floodlights[floodlightNum][LEDNum].GPIO = GPIOA;
 				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld2R_Pin;
 				break;
 			case 11:
+				floodlights[floodlightNum][LEDNum].GPIO = GPIOA;
 				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld2G_Pin;
 				break;
 			case 12:
+				floodlights[floodlightNum][LEDNum].GPIO = GPIOB;
 				floodlights[floodlightNum][LEDNum].LEDColourChannelPin = Fld2B_Pin;
 				break;
 			default:
@@ -170,7 +198,7 @@ _Bool initializeFloodlightStructs() {
 }
 
 _Bool initializeKnobStructs() {
-	char knob;
+	uint8_t knob;
 	for(knob = 0; knob < NUMKNOBS; knob++) {
 		switch(knob) {
 		case 0:
@@ -215,6 +243,47 @@ _Bool initializeKnobStructs() {
 	return 0;
 }
 
+
+_Bool initializeButtonStructs() {
+	uint8_t button;
+	for(button = 0; button < NUMBUTTONS; button++) {
+		switch(button) {
+		case 0:
+			buttons[button].GPIO = GPIOA;
+			buttons[button].pin = But1_Pin;
+			break;
+		case 1:
+			buttons[button].GPIO = GPIOA;
+			buttons[button].pin = But2_Pin;
+			break;
+		case 2:
+			buttons[button].GPIO = GPIOA;
+			buttons[button].pin = But3_Pin;
+			break;
+		case 3:
+			buttons[button].GPIO = GPIOB;
+			buttons[button].pin = But4_Pin;
+			break;
+		case 4:
+			buttons[button].GPIO = GPIOB;
+			buttons[button].pin = But5_Pin;
+			break;
+		case 5:
+			buttons[button].GPIO = GPIOA;
+			buttons[button].pin = But6_Pin;
+			break;
+		default:
+			//Configure shit!
+			return 1;
+		}
+
+		buttons[button].pinState = GPIO_PIN_RESET;
+		buttons[button].buttonState = 0;
+		buttons[button].debounceCounter = 0;
+	}
+	return 0;
+}
+
 uint16_t readADCChannel(KnobChannel channel, ADC_HandleTypeDef * adc) {
 	ADC_ChannelConfTypeDef sConfig = { 0 };
 
@@ -236,14 +305,43 @@ uint16_t readADCChannel(KnobChannel channel, ADC_HandleTypeDef * adc) {
 }
 
 void pollKnobs() {
-	static char knob;
+	static uint8_t knob;
 	for(knob = 0; knob < NUMKNOBS; knob++) {
 		//Smooth to filter out noise
 		knobs[knob].value = (9*knobs[knob].value +
 				readADCChannel(knobs[knob].channel, knobs[knob].adc)) / 10;
 	}
 }
-void resetRiseFall(char floodlightNum, char LEDNum, _Bool *dimCorrect) {
+
+void debounceButtons() {
+	static uint8_t button;
+	//TODO: get rid of this
+	static int temp = 0;
+
+	for (button = 0; button < NUMBUTTONS; button++) {
+		if (HAL_GPIO_ReadPin(buttons[button].GPIO, buttons[button].pin)
+				== GPIO_PIN_SET) {
+			if (buttons[button].buttonState == 0) {
+				buttons[button].debounceCounter++;
+				if (buttons[button].debounceCounter >= DEBOUNCECYCLES) {
+					//Legit button press!
+					temp = 1;
+					buttons[button].debounceCounter = 0;
+					buttons[button].buttonState = 1;
+				}
+			}
+		} else if (buttons[button].debounceCounter != 0) {
+			buttons[button].debounceCounter = 0;
+		} else if (buttons[button].buttonState != 0) {
+			buttons[button].buttonState = 0;
+		}
+	}
+	if (temp == 1) {
+				temp = 0;
+	}
+}
+
+void resetRiseFall(uint8_t floodlightNum, uint8_t LEDNum, _Bool *dimCorrect) {
 	//Divide by 2 since we cycle duty per half-wave, not full wave
 		static unsigned short effDuty;
 	effDuty = (short) ((((unsigned long) width
@@ -292,7 +390,7 @@ void mainsDetect() {
 	} else {
 		set = 1;
 	}
-	*DWT_CYCCNT = 0;                  // clear DWT cycle counter
+	if (*DWT_CYCCNT > DWT_CYCLE_RESET)  *DWT_CYCCNT = 0;                  // clear DWT cycle counter
 	start = timer2cycle();
 
 
@@ -337,12 +435,11 @@ void mainsDetect() {
 					resetRiseFall(0, 1, &dimCorrect);
 					resetRiseFall(0, 2, &dimCorrect);
 					reset = 0;
+					floodlights[1][0].dim = 255 - floodlights[0][0].dim;
+					floodlights[1][1].dim = 255 - floodlights[0][1].dim;
+					floodlights[1][2].dim = 255 - floodlights[0][2].dim;
 		}
 		//--------------------------------------------------------------------------------------------------------
-}
-
-void buttonPress (uint16_t GPIO_Pin) {
-	//TODO: Fill in with button press stuff
 }
 
 #pragma GCC push_options
@@ -375,9 +472,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	if(initialized) {
 	if (GPIO_Pin == Mains_Pin) {
 		mainsDetect();
-	} else if (GPIO_Pin == But1_Pin || GPIO_Pin == But2_Pin || GPIO_Pin == But3_Pin ||
-			GPIO_Pin == But4_Pin || GPIO_Pin == But5_Pin || GPIO_Pin == But6_Pin) {
-		buttonPress(GPIO_Pin);
 	}
 	}
 }
@@ -387,7 +481,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 		pulseFloodlight();
 	}
 	else if (htim->Instance == TIM3) {
+		//Every 1/4 of a second
 		pollKnobs();
+	}
+	else if (htim->Instance == TIM4) {
+		//Every 2ms
+		debounceButtons();
 	}
 	}
 }
@@ -414,14 +513,12 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -429,6 +526,7 @@ int main(void)
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_TIM2_Init();
+  MX_TIM4_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 	//Start interrupts & ADC
@@ -436,6 +534,7 @@ int main(void)
 	HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
 	HAL_TIM_Base_Start_IT(&htim2);
 	HAL_TIM_Base_Start_IT(&htim3);
+	HAL_TIM_Base_Start_IT(&htim4);
 
 	*DEMCR = *DEMCR | 0x01000000;     // enable trace
 	*LAR = 0xC5ACCE55;    // <-- added unlock access to DWT (ITM, etc.)registers
@@ -448,6 +547,10 @@ int main(void)
 
 	//If fails config, exit program
 	if (initializeKnobStructs())
+		return 0;
+
+	//If fails config, exit program
+	if (initializeButtonStructs())
 		return 0;
 
 	initialized = 1;
@@ -730,6 +833,51 @@ static void MX_TIM3_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 839;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 249;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -758,47 +906,44 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = Fld1G_Pin|Fld1B_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : But4_Pin Mains_Pin But5_Pin */
-  GPIO_InitStruct.Pin = But4_Pin|Mains_Pin|But5_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  /*Configure GPIO pins : But4_Pin But5_Pin */
+  GPIO_InitStruct.Pin = But4_Pin|But5_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : Fld2R_Pin Fld2G_Pin */
   GPIO_InitStruct.Pin = Fld2R_Pin|Fld2G_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : But1_Pin But2_Pin But3_Pin But6_Pin */
   GPIO_InitStruct.Pin = But1_Pin|But2_Pin|But3_Pin|But6_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : Mains_Pin */
+  GPIO_InitStruct.Pin = Mains_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(Mains_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : Fld2B_Pin Fld1R_Pin */
   GPIO_InitStruct.Pin = Fld2B_Pin|Fld1R_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
-
   HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */

@@ -79,23 +79,18 @@ void Error_Handler(void);
 #define Knob7_GPIO_Port GPIOA
 #define But4_Pin GPIO_PIN_0
 #define But4_GPIO_Port GPIOB
-#define But4_EXTI_IRQn EXTI0_IRQn
 #define Fld2R_Pin GPIO_PIN_8
 #define Fld2R_GPIO_Port GPIOA
 #define But1_Pin GPIO_PIN_9
 #define But1_GPIO_Port GPIOA
-#define But1_EXTI_IRQn EXTI9_5_IRQn
 #define But2_Pin GPIO_PIN_10
 #define But2_GPIO_Port GPIOA
-#define But2_EXTI_IRQn EXTI15_10_IRQn
 #define Fld2G_Pin GPIO_PIN_11
 #define Fld2G_GPIO_Port GPIOA
 #define But3_Pin GPIO_PIN_12
 #define But3_GPIO_Port GPIOA
-#define But3_EXTI_IRQn EXTI15_10_IRQn
 #define But6_Pin GPIO_PIN_15
 #define But6_GPIO_Port GPIOA
-#define But6_EXTI_IRQn EXTI15_10_IRQn
 #define Mains_Pin GPIO_PIN_4
 #define Mains_GPIO_Port GPIOB
 #define Mains_EXTI_IRQn EXTI4_IRQn
@@ -105,7 +100,6 @@ void Error_Handler(void);
 #define Fld1R_GPIO_Port GPIOB
 #define But5_Pin GPIO_PIN_7
 #define But5_GPIO_Port GPIOB
-#define But5_EXTI_IRQn EXTI9_5_IRQn
 
 /* USER CODE BEGIN Private defines */
 
