@@ -48,11 +48,15 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
+UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
+DMA_HandleTypeDef hdma_usart2_tx;
+
 /* USER CODE BEGIN PV */
 typedef enum {
 	//NOTE: repeat since latter half knobs are on adc2
-	KNOB1Chn = ADC_CHANNEL_1, KNOB2Chn = ADC_CHANNEL_2, KNOB3Chn = ADC_CHANNEL_4, KNOB4Chn = ADC_CHANNEL_17,
-	KNOB5Chn = ADC_CHANNEL_13, KNOB6Chn = ADC_CHANNEL_3, KNOB7Chn = ADC_CHANNEL_4, KNOB8Chn = ADC_CHANNEL_3
+	KNOB1Chn = ADC_CHANNEL_1, KNOB2Chn = ADC_CHANNEL_2, KNOB3Chn = ADC_CHANNEL_17,
+	KNOB4Chn = ADC_CHANNEL_13,	KNOB5Chn = ADC_CHANNEL_3, KNOB6Chn = ADC_CHANNEL_4
 } KnobChannel;
 
 struct FloodlightLED {
@@ -87,7 +91,7 @@ struct Button {
 #define COLOURCHANNELSPERLIGHT 3
 struct FloodlightLED floodlights[NUMLIGHTS][COLOURCHANNELSPERLIGHT];
 
-#define NUMKNOBS 8
+#define NUMKNOBS 6
 //Div by 5 since 5ms polling
 #define DEBOUNCECYCLES 20
 struct Knob knobs[NUMKNOBS];
@@ -117,19 +121,34 @@ const uint32_t startReset = (uint32_t) (pow(2, sizeof(uint32_t) * 8));
 const uint32_t startTilNowReset = (uint32_t) (pow(2, sizeof(uint32_t) * 8) / 64);
 
 
-/* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_ADC2_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+_Bool initializeFloodlightStructs(void);
+_Bool initializeKnobStructs(void);
+_Bool initializeButtonStructs(void);
+uint16_t readADCChannel(KnobChannel channel, ADC_HandleTypeDef * adc);
+void pollKnobs(void);
+void debounceButtons(void);
+void resetRiseFall(uint8_t floodlightNum, uint8_t LEDNum, _Bool *dimCorrect);
+void mainsDetect(void);
+void pulseFloodlight(void);
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
 //Set to (666+1)*(7+1) so same rate as timer2
 #define timer2cycle() (*DWT_CYCCNT/5336)
 #define starttilnow() (timer2cycle() - start)
@@ -211,7 +230,7 @@ _Bool initializeKnobStructs() {
 			break;
 		case 2:
 			knobs[knob].channel = KNOB3Chn;
-			knobs[knob].adc = &hadc1;
+			knobs[knob].adc = &hadc2;
 			break;
 		case 3:
 			knobs[knob].channel = KNOB4Chn;
@@ -224,14 +243,6 @@ _Bool initializeKnobStructs() {
 		case 5:
 			knobs[knob].channel = KNOB6Chn;
 			knobs[knob].adc = &hadc2;
-			break;
-		case 6:
-			knobs[knob].channel = KNOB7Chn;
-			knobs[knob].adc = &hadc2;
-			break;
-		case 7:
-			knobs[knob].channel = KNOB8Chn;
-			knobs[knob].adc = &hadc1;
 			break;
 		default:
 			//Configure shit!
@@ -490,11 +501,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	}
 	}
 }
-
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
 /* USER CODE END 0 */
 
 /**
@@ -523,11 +529,13 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_TIM2_Init();
   MX_TIM4_Init();
   MX_TIM3_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 	//Start interrupts & ADC
 	HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
@@ -667,7 +675,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_3;
+  sConfig.Channel = ADC_CHANNEL_1;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -874,6 +882,74 @@ static void MX_TIM4_Init(void)
   /* USER CODE BEGIN TIM4_Init 2 */
 
   /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 9600;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart2, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart2, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMAMUX1_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
+  /* DMA1_Channel6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
 
 }
 
