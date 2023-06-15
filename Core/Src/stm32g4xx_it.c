@@ -22,6 +22,7 @@
 #include "stm32g4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "app_usart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -297,7 +298,10 @@ void USART2_IRQHandler(void)
   /* USER CODE END USART2_IRQn 0 */
   HAL_UART_IRQHandler(&huart2);
   /* USER CODE BEGIN USART2_IRQn 1 */
-
+  if(__HAL_UART_GET_FLAG(&huart2, UART_FLAG_IDLE) == 1)
+  {
+	uart_idle_callback(&huart2);
+  }
   /* USER CODE END USART2_IRQn 1 */
 }
 

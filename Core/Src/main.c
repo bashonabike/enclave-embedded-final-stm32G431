@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "math.h"
 #include <stdlib.h>
+#include "app_usart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -562,6 +563,8 @@ int main(void)
 		return 0;
 
 	initialized = 1;
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -569,10 +572,23 @@ int main(void)
 	while (1) {
     /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+		/* USER CODE BEGIN 3 */
+		// Read all messages in buffer
+		while(is_cmd_rdy())
+		{
+			light_cmd_t cmd = get_cmd();
+
+			//Send a spoof ctrl cmd back to PC
+			user_ctrl_t ctrl_input = {
+				.type = INPUT_TYPE_BUTTON,
+				.idx = 1,
+				.val = 1,
+			};
+			uart_write((char*)&ctrl_input, sizeof(user_ctrl_t));
+		}
 
 		//  mainsDetect();
-//	  pulseFloodlight();
+		//  pulseFloodlight();
 	}
   /* USER CODE END 3 */
 }
