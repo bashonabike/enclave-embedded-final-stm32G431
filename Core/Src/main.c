@@ -121,7 +121,6 @@ volatile uint32_t *LAR = (uint32_t*) 0xE0001FB0; // <-- added lock access regist
 const uint32_t startReset = (uint32_t) (pow(2, sizeof(uint32_t) * 8));
 const uint32_t startTilNowReset = (uint32_t) (pow(2, sizeof(uint32_t) * 8) / 64);
 
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -544,6 +543,7 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim2);
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_TIM_Base_Start_IT(&htim4);
+	app_uart_init(&huart2);
 
 	*DEMCR = *DEMCR | 0x01000000;     // enable trace
 	*LAR = 0xC5ACCE55;    // <-- added unlock access to DWT (ITM, etc.)registers
@@ -572,7 +572,7 @@ int main(void)
 	while (1) {
     /* USER CODE END WHILE */
 
-		/* USER CODE BEGIN 3 */
+    /* USER CODE BEGIN 3 */
 		// Read all messages in buffer
 		while(is_cmd_rdy())
 		{
@@ -917,7 +917,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 9600;
+  huart2.Init.BaudRate = 115200;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;

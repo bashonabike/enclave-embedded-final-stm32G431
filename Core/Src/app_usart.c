@@ -57,9 +57,11 @@ size_t uart_write(const char * buf, size_t len)
  * @brief UART RX callback - loads data into application buffer.
  *
  * Expects DMA to be enabled.
+ * NOTE: Need to call app_uart_init(&huart2) in int main to initialize interrupt!!
  */
 void uart_idle_callback(UART_HandleTypeDef* huart)
 {
+	//Not working?  Did you call app_uart_init(&huart2) in int main to initialize interrupt?
 	HAL_StatusTypeDef status;
 
 	__HAL_UART_CLEAR_IDLEFLAG(huart); //Clear idle interrupt flag
