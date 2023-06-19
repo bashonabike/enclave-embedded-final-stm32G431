@@ -61,7 +61,7 @@ size_t uart_write(const char * buf, size_t len)
 
 	//transmit data
 	uart_tx_cmplt = false;
-	if (HAL_UART_Transmi_DMAA(&huart2, (uint8_t *)buf, len) != HAL_OK) {
+	if (HAL_UART_Transmi_DMA(&huart2, (uint8_t *)buf, len) != HAL_OK) {
 		return 0;
 	}
 
