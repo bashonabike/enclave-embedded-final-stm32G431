@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "math.h"
 #include <stdlib.h>
+#include "app_usart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -119,7 +120,6 @@ volatile uint32_t *LAR = (uint32_t*) 0xE0001FB0; // <-- added lock access regist
 
 const uint32_t startReset = (uint32_t) (pow(2, sizeof(uint32_t) * 8));
 const uint32_t startTilNowReset = (uint32_t) (pow(2, sizeof(uint32_t) * 8) / 64);
-
 
 /* USER CODE END PV */
 
@@ -543,6 +543,7 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim2);
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_TIM_Base_Start_IT(&htim4);
+	app_uart_init(&huart2);
 
 	*DEMCR = *DEMCR | 0x01000000;     // enable trace
 	*LAR = 0xC5ACCE55;    // <-- added unlock access to DWT (ITM, etc.)registers
@@ -562,6 +563,8 @@ int main(void)
 		return 0;
 
 	initialized = 1;
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -570,9 +573,22 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+		// Read all messages in buffer
+		while(is_cmd_rdy())
+		{
+			light_cmd_t cmd = get_cmd();
+
+			//Send a spoof ctrl cmd back to PC
+			user_ctrl_t ctrl_input = {
+				.type = INPUT_TYPE_BUTTON,
+				.idx = 1,
+				.val = 1,
+			};
+			uart_write((char*)&ctrl_input, sizeof(user_ctrl_t));
+		}
 
 		//  mainsDetect();
-//	  pulseFloodlight();
+		//  pulseFloodlight();
 	}
   /* USER CODE END 3 */
 }
@@ -901,7 +917,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 9600;
+  huart2.Init.BaudRate = 115200;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
