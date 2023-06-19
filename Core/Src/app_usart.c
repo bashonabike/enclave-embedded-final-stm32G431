@@ -39,19 +39,34 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
 size_t uart_write(const char * buf, size_t len)
 {
+#define USE_BLOCKING_UART_WRITES 1
+#if USE_BLOCKING_UART_WRITES
+
+#define UART_TX_BLOCKING_TIMEOUT 3 //ms?
+
+	uart_tx_cmplt = false;
+	if (HAL_UART_Transmit(&huart2, (uint8_t *)buf, len, UART_TX_BLOCKING_TIMEOUT) != HAL_OK) {
+		return 0;
+	}
+
+	return len;
+
+#else
 	//verify last tx is done before starting new one
 	if(uart_tx_cmplt != true)
 	{
 		HAL_Delay(1);
 	}
 
+
 	//transmit data
 	uart_tx_cmplt = false;
-	if (HAL_UART_Transmit_DMA(&huart2, (uint8_t *)buf, len) != HAL_OK) {
+	if (HAL_UART_Transmi_DMAA(&huart2, (uint8_t *)buf, len) != HAL_OK) {
 		return 0;
 	}
 
 	return len;
+#endif
 }
 /**
  * @brief UART RX callback - loads data into application buffer.

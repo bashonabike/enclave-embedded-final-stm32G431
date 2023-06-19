@@ -42,6 +42,9 @@ extern "C" {
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
 
+//2^32 - 100000
+#define DWT_CYCLE_RESET 4294867296
+
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/

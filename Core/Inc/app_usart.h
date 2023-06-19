@@ -56,12 +56,6 @@
 
 
 typedef enum {
-	CMD_INVALID = -1,
-	CMD_FLOODLIGHTS = 0,
-	CMD_STRINGLIGHTS = 1,
-}light_cmd_type_t;
-
-typedef enum {
 	INPUT_TYPE_INVALID = 0,
 	INPUT_TYPE_BUTTON = 'b',
 	INPUT_TYPE_POT = 'p',
@@ -70,7 +64,7 @@ typedef enum {
 /* This struct is information we receive from PC */
 typedef struct {
 	// MUST MATCH PYTHON: class RGB(ctypes.Structure)
-	light_cmd_type_t type;
+	uint8_t lightIdx; //which floodlight to talk to
 	uint8_t R;
 	uint8_t G;
 	uint8_t B;
