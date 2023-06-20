@@ -148,14 +148,17 @@ void updateFloodlight(uint8_t lightIdx, uint8_t R, uint8_t G, uint8_t B)
 {
 	if(floodlights[lightIdx][LED_R].brightness != R)
 	{
+		floodlights[lightIdx][LED_R].brightness = R;
 		resetRiseFall(lightIdx, LED_R);
 	}
 	if(floodlights[lightIdx][LED_G].brightness != G)
 	{
+		floodlights[lightIdx][LED_G].brightness = G;
 		resetRiseFall(lightIdx, LED_G);
 	}
 	if(floodlights[lightIdx][LED_B].brightness != B)
 	{
+		floodlights[lightIdx][LED_B].brightness = B;
 		resetRiseFall(lightIdx, LED_B);
 	}
 }
