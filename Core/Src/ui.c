@@ -8,6 +8,7 @@
 #include "main.h"
 #include "ui.h"
 #include "app_usart.h"
+#include "stdlib.h"
 
 typedef enum {
 	//NOTE: repeat since latter half knobs are on adc2
@@ -19,6 +20,7 @@ struct Knob {
 	ADC_HandleTypeDef * adc;
 	KnobChannel channel;
 	uint16_t value;
+	uint16_t oldValue;
 };
 
 struct Button {
@@ -39,6 +41,30 @@ struct Button buttons[NUMBUTTONS];
 
 extern ADC_HandleTypeDef hadc1;
 extern ADC_HandleTypeDef hadc2;
+
+_Bool knobsInitialized = 0;
+_Bool butInitialized = 0;
+
+
+uint16_t readADCChannel(KnobChannel channel, ADC_HandleTypeDef * adc) {
+	ADC_ChannelConfTypeDef sConfig = { 0 };
+
+	/** Configure Regular Channel
+	 */
+	sConfig.Channel = channel;
+	sConfig.Rank = ADC_REGULAR_RANK_1;
+	sConfig.SingleDiff = ADC_SINGLE_ENDED;
+	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+	sConfig.OffsetNumber = ADC_OFFSET_NONE;
+	sConfig.Offset = 0;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
+
+	HAL_ADC_Start(adc);
+	HAL_ADC_PollForConversion(adc, 1);
+	return HAL_ADC_GetValue(adc);
+}
 
 _Bool initializeKnobStructs(void) {
 	uint8_t knob;
@@ -73,8 +99,10 @@ _Bool initializeKnobStructs(void) {
 			return 1;
 		}
 
-		knobs[knob].value = 0;
+		knobs[knob].value = readADCChannel(knobs[knob].channel, knobs[knob].adc);
+		knobs[knob].oldValue = knobs[knob].value;
 	}
+	knobsInitialized = 1;
 	return 0;
 }
 
@@ -116,27 +144,8 @@ _Bool initializeButtonStructs(void) {
 		buttons[button].buttonState = 0;
 		buttons[button].debounceCounter = 0;
 	}
+	butInitialized = 1;
 	return 0;
-}
-
-uint16_t readADCChannel(KnobChannel channel, ADC_HandleTypeDef * adc) {
-	ADC_ChannelConfTypeDef sConfig = { 0 };
-
-	/** Configure Regular Channel
-	 */
-	sConfig.Channel = channel;
-	sConfig.Rank = ADC_REGULAR_RANK_1;
-	sConfig.SingleDiff = ADC_SINGLE_ENDED;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
-	sConfig.OffsetNumber = ADC_OFFSET_NONE;
-	sConfig.Offset = 0;
-	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
-		Error_Handler();
-	}
-
-	HAL_ADC_Start(adc);
-	HAL_ADC_PollForConversion(adc, 1);
-	return HAL_ADC_GetValue(adc);
 }
 
 void pollKnobs(void) {
@@ -144,12 +153,13 @@ void pollKnobs(void) {
 	for(knob = 0; knob < NUMKNOBS; knob++) {
 		uint16_t newVal = readADCChannel(knobs[knob].channel, knobs[knob].adc);
 
-		//Filter out noise - only allow 1/10th of new value
-		uint16_t newFiltVal = (9*knobs[knob].value + newVal) / 10;
+		//Filter out noise - only allow 1/100th of new value
+		uint16_t newFiltVal = (9*(uint32_t)knobs[knob].value + (uint32_t)newVal) / 10;
 
 		if(knobs[knob].value != newFiltVal)
 		{
 			knobs[knob].value = newFiltVal;
+			if (abs(knobs[knob].value - knobs[knob].oldValue) > 10) {
 
 			//Send ctrl cmd back to PC
 			user_ctrl_t ctrl_input = {
@@ -158,6 +168,9 @@ void pollKnobs(void) {
 				.val = knobs[knob].value,
 			};
 			uart_write((char*)&ctrl_input, sizeof(user_ctrl_t));
+
+			knobs[knob].oldValue = knobs[knob].value;
+			}
 		}
 	}
 }
@@ -190,4 +203,14 @@ void debounceButtons(void) {
 			buttons[button].buttonState = 0;
 		}
 	}
+}
+
+_Bool isKnobsRdy(void)
+{
+	return knobsInitialized;
+}
+
+_Bool isButRdy(void)
+{
+	return butInitialized;
 }

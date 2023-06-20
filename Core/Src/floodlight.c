@@ -50,7 +50,7 @@ struct FloodlightLED {
 
 struct FloodlightLED floodlights[NUMLIGHTS][NUM_LEDS];
 
-_Bool initialized = 0;
+_Bool fldInitialized = 0;
 
 unsigned long width = 0;
 unsigned long avgWidth = 0;
@@ -108,13 +108,13 @@ _Bool initializeFloodlightStructs(void)
 
 		}
 	}
-	initialized = 1;
+	fldInitialized = 1;
 	return 0;
 }
 
 _Bool isFloodlightRdy(void)
 {
-	return initialized;
+	return fldInitialized;
 }
 
 void resetRiseFall(uint8_t floodlightNum, uint8_t LEDNum) {
@@ -262,7 +262,7 @@ void pulseFloodlight() {
 
 // EXTI Mains External Interrupt ISR Handler
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-	if(initialized) {
+	if(fldInitialized) {
 		if (GPIO_Pin == Mains_Pin) {
 			mainsDetect();
 		}

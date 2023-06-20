@@ -12,5 +12,7 @@ _Bool initializeKnobStructs(void);
 _Bool initializeButtonStructs(void);
 void pollKnobs(void);
 void debounceButtons(void);
+_Bool isKnobsRdy(void);
+_Bool isButRdy(void);
 
 #endif /* SRC_UI_H_ */
