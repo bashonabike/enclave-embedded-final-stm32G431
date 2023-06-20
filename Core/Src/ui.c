@@ -45,7 +45,6 @@ extern ADC_HandleTypeDef hadc2;
 _Bool knobsInitialized = 0;
 _Bool butInitialized = 0;
 
-
 uint16_t readADCChannel(KnobChannel channel, ADC_HandleTypeDef * adc) {
 	ADC_ChannelConfTypeDef sConfig = { 0 };
 
@@ -57,12 +56,13 @@ uint16_t readADCChannel(KnobChannel channel, ADC_HandleTypeDef * adc) {
 	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
-	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+	if (HAL_ADC_ConfigChannel(adc, &sConfig) != HAL_OK) {
 		Error_Handler();
 	}
 
 	HAL_ADC_Start(adc);
 	HAL_ADC_PollForConversion(adc, 1);
+
 	return HAL_ADC_GetValue(adc);
 }
 
@@ -150,6 +150,7 @@ _Bool initializeButtonStructs(void) {
 
 void pollKnobs(void) {
 	static uint8_t knob;
+
 	for(knob = 0; knob < NUMKNOBS; knob++) {
 		uint16_t newVal = readADCChannel(knobs[knob].channel, knobs[knob].adc);
 
