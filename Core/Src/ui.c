@@ -16,11 +16,13 @@ typedef enum {
 	KNOB4Chn = ADC_CHANNEL_13,	KNOB5Chn = ADC_CHANNEL_3, KNOB6Chn = ADC_CHANNEL_4
 } KnobChannel;
 
+#define KNOB_BUFFER_SZ	5
+
 struct Knob {
 	ADC_HandleTypeDef * adc;
 	KnobChannel channel;
-	uint16_t value;
-	uint16_t oldValue;
+	uint16_t value_buf[KNOB_BUFFER_SZ];
+	uint16_t oldAvgValue;
 };
 
 struct Button {
@@ -31,7 +33,7 @@ struct Button {
 	uint8_t debounceCounter;
 };
 
-#define NUMKNOBS 6
+#define NUMKNOBS 3
 //Div by 5 since 5ms polling
 #define DEBOUNCECYCLES 20
 struct Knob knobs[NUMKNOBS];
@@ -98,9 +100,9 @@ _Bool initializeKnobStructs(void) {
 			//Configure shit!
 			return 1;
 		}
-
-		knobs[knob].value = readADCChannel(knobs[knob].channel, knobs[knob].adc);
-		knobs[knob].oldValue = knobs[knob].value;
+//
+//		knobs[knob].value = readADCChannel(knobs[knob].channel, knobs[knob].adc);
+//		knobs[knob].oldAvgValue = knobs[knob].value;
 	}
 	knobsInitialized = 1;
 	return 0;
@@ -150,27 +152,40 @@ _Bool initializeButtonStructs(void) {
 
 void pollKnobs(void) {
 	static uint8_t knob;
+	static uint8_t counter = 0;
 
 	for(knob = 0; knob < NUMKNOBS; knob++) {
 		uint16_t newVal = readADCChannel(knobs[knob].channel, knobs[knob].adc);
 
-		//Filter out noise - only allow 1/100th of new value
-		uint16_t newFiltVal = (9*(uint32_t)knobs[knob].value + (uint32_t)newVal) / 10;
+		knobs[knob].value_buf[counter] = newVal;
 
-		if(knobs[knob].value != newFiltVal)
-		{
-			knobs[knob].value = newFiltVal;
-			if (abs(knobs[knob].value - knobs[knob].oldValue) > 10) {
+//		//Filter out noise - only allow 1/2 of new value
+//		uint16_t newFiltVal = ((uint32_t)knobs[knob].value + (uint32_t)newVal) / 2;
+	}
 
-			//Send ctrl cmd back to PC
-			user_ctrl_t ctrl_input = {
-				.type = INPUT_TYPE_POT,
-				.idx = knob,
-				.val = knobs[knob].value,
-			};
-			uart_write((char*)&ctrl_input, sizeof(user_ctrl_t));
+	counter++;
+	if(counter == KNOB_BUFFER_SZ)
+	{
+		counter = 0;
 
-			knobs[knob].oldValue = knobs[knob].value;
+		for(knob = 0; knob < NUMKNOBS; knob++) {
+			//average
+			uint16_t avg = knobs[knob].value_buf[0];
+			for(int i = 1; i < KNOB_BUFFER_SZ; i++)
+			{
+				avg = (avg + knobs[knob].value_buf[i]) / 2;
+			}
+			if (abs(avg - knobs[knob].oldAvgValue) > 20)
+			{
+				//Send ctrl cmd back to PC
+				user_ctrl_t ctrl_input = {
+					.type = INPUT_TYPE_POT,
+					.idx = knob,
+					.val = avg,
+				};
+				uart_write((char*)&ctrl_input, sizeof(user_ctrl_t));
+
+				knobs[knob].oldAvgValue = avg;
 			}
 		}
 	}
