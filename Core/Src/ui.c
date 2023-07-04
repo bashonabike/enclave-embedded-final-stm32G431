@@ -33,7 +33,7 @@ struct Button {
 	uint8_t debounceCounter;
 };
 
-#define NUMKNOBS 3
+#define NUMKNOBS 5
 //Div by 5 since 5ms polling
 #define DEBOUNCECYCLES 20
 struct Knob knobs[NUMKNOBS];
@@ -167,15 +167,15 @@ void pollKnobs(void) {
 	if(counter == KNOB_BUFFER_SZ)
 	{
 		counter = 0;
-
 		for(knob = 0; knob < NUMKNOBS; knob++) {
-			//average
-			uint16_t avg = knobs[knob].value_buf[0];
-			for(int i = 1; i < KNOB_BUFFER_SZ; i++)
+			uint32_t sum = 0;
+			for(int i = 0; i < KNOB_BUFFER_SZ; i++)
 			{
-				avg = (avg + knobs[knob].value_buf[i]) / 2;
+				sum += knobs[knob].value_buf[i];
 			}
-			if (abs(avg - knobs[knob].oldAvgValue) > 20)
+			uint16_t avg = sum / KNOB_BUFFER_SZ;
+
+			if (abs(avg - knobs[knob].oldAvgValue) > 30)
 			{
 				//Send ctrl cmd back to PC
 				user_ctrl_t ctrl_input = {
